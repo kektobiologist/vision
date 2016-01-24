@@ -2,6 +2,11 @@
 #include <QCoreApplication>
 #include "config.h"
 #include "serial.h"
+#include <stdio.h>
+#include "opencv2/imgproc/imgproc.hpp"
+#include "opencv2/highgui/highgui.hpp"
+#define WP_FILE "/home/arpit/sheldon/3/wp.txt"
+
 AlgoWorker::AlgoWorker(QObject *parent) :
     QObject(parent)
 {
@@ -45,6 +50,24 @@ void AlgoWorker::setup(QThread *cThread, QMutex *_bsMutex, BeliefState *_bs)
 
 void AlgoWorker::onEntry()
 {
+    cv::Vec3b front, back;
+    FILE *f = fopen(WP_FILE, "r");
+    if (!f) {
+        qDebug() << "Could not open wp file.";
+        return;
+    }
+  fscanf(f, "%d %d %d\n", &front[0], &front[1], &front[2]);
+  fscanf(f, "%d %d %d\n", &back[0], &back[1], &back[2]);
+  cout << "front: " << front << "back " << back << endl;
+  int n = 0;
+  fscanf(f, "%d\n", &n);
+  x = vector<int>(n, 0);
+  y = x;
+  for (int i = 0; i < n; ++i)
+  {
+    fscanf(f, "%d %d\n", &x[i], &y[i]);
+  }
+    idx = 0;
     qDebug() << "Algo Worker started.";
     if(!s.Open("/dev/rfcomm0", 9600))
     {
@@ -55,7 +78,8 @@ void AlgoWorker::onEntry()
     {
         qDebug() << "COM Port opened! =)";
     }
-    s.WriteByte('P');
+    s.WriteByte('O');
+    s.WriteByte('l');
     botState = BOT_START;
     curDest = cvPoint(-1, -1);
     curCube = CubeData();
@@ -68,8 +92,8 @@ void AlgoWorker::onEntry()
 
 void AlgoWorker::onEnd()
 {
-    s.WriteByte('P');
-    s.WriteByte('p');
+    s.WriteByte('O');
+    s.WriteByte('l');
     botState = BOT_START;
     s.Close();
     qDebug() << "Algo Worker stopped.";
@@ -80,116 +104,21 @@ void AlgoWorker::onTimeout()
     bsMutex->lock();
     bs = *bsCam;
     bsMutex->unlock();
+    if (idx >= x.size())
+        return;
 //    qDebug() << bs.botPos.x << "/// " << bs.botPos.y;
     //Do work.
 //    qDebug() << "Inter = " << bs.startCorner.x << ",  " << bs.startCorner.y;
 //    qDebug() << "mine deposit = " << bs.resourceDepositPoint.x << ", " << bs.resourceDepositPoint.y;
 //    qDebug() << "bomb deposit = "  << bs.bombDepositPoint.x << ", " << bs.bombDepositPoint.y;
-    vector <CubeData> cubes;
-    resourceCubeDest = bs.resourceDepositPoint;
-    bombCubeDest = bs.bombDepositPoint;
-    startCorner = bs.startCorner;
-    switch(botState)
-    {
-    case BOT_START:
-        qDebug() << "Bot Start!";
-    case BOT_SEARCH_RESOURCE:
-        // Experimental : use chooseBestResourceCube() ?
-          curCube = chooseBestResourceCube();
-          if(!(curCube.color == WOOD_COLOR || curCube.color == SILVER_COLOR || curCube.color == GOLD_COLOR))
-          {
-            qDebug() << "no resource cubes left.. going after bombs";
-            curCube = CubeData();
-            botState = BOT_SEARCH_BOMB;
-            break;
-          }
-          isInterCube = calcCubeInter(curCube);
-          if(isInterCube)
-          {
-              qDebug() << "move to inter";
-              curDest = startCorner;
-              isInterCubeCaptured = false;
-              botState = BOT_MOVETOINTER;
-              break;
-          }
-          curDest = curCube.centre;
-          qDebug() << "going after resource cube at" << curDest.x << ", " << curDest.y;
-          botState = BOT_MOVETOCUBE;
-          break;
-    case BOT_SEARCH_BOMB:
-        isInterCubeCaptured = false;
-        if(!bs.bombCubes.size())
-        {
-            qDebug() << "no bomb cubes found... returning.";
-            return;
-        }
-        isInterCube = false;
-        curCube = bs.bombCubes[0];
-        curDest = curCube.centre;
-        botState = BOT_MOVETOCUBE;
-        break;
-    case BOT_MOVETOINTER:
-        if(!moveToPoint(bs.botPos, bs.botAngle, curDest))
-        {
-            //reached inter
-            if(isInterCubeCaptured)
-            {
-                curDest = resourceCubeDest;
-                botState = BOT_MOVETOCAMP;
-                isInterCubeCaptured = false;
-                break;
-            }
-            else
-            {
-                curDest = curCube.centre;
-                botState = BOT_MOVETOCUBE;
-                break;
-            }
-        }
-        break;
-    case BOT_MOVETOCUBE:        
-        if(!moveToPoint(bs.botPos, bs.botAngle, curDest))
-        {
-            execCommand(BOT_DOWN);
-            if(isInterCube)
-            {
-                curDest = startCorner;
-                botState = BOT_MOVETOINTER;
-                isInterCubeCaptured = true;
-                break;
-            }
-            if(curCube.color == BOMB_COLOR)
-                curDest = bombCubeDest;
-            else if(curCube.color == WOOD_COLOR || curCube.color == SILVER_COLOR || curCube.color == GOLD_COLOR)
-                curDest = resourceCubeDest;
-            else
-                qDebug()<< "Don't know current color!";
-            botState = BOT_MOVETOCAMP;
-        }
-        break;
-    case BOT_MOVETOCAMP:
-        if(!moveToPoint(bs.botPos, bs.botAngle, curDest))
-        {
-            execCommand(BOT_UP);
-            execCommand(BOT_FORWARD);
-            usleep(1000*1000);
-            execCommand(BOT_BACKWARD);
-            usleep(1000*1000);
-            execCommand(BOT_STOP);
-            switch(curCube.color)
-            {
-            case WOOD_COLOR: numWood++; break;
-            case SILVER_COLOR: numSilver++; break;
-            case GOLD_COLOR: numGold++; break;
-            case BOMB_COLOR: numBombs++; break;
-            default: qDebug() << "Eror! don't know color of deposited cube!";
-            }
-            botState = BOT_START;
-        }
-        break;
-    }
+
 //    emit currentStateReady(botState);
 //    qDebug() << "x, y = " << bs.getBotPos().x << ", " << bs.getBotPos().y;
+    if (!moveToPoint(bs.getBotPos(), bs.getBotAngle(), cvPoint(x[idx], y[idx]))) {
+      qDebug() << "Reached checkpoint" << idx;
+      idx++;
+      qDebug() << "NExt point: " << x[idx] << y[idx];
+    }
     timer->setSingleShot(true);
     timer->start(30);
 }
@@ -214,46 +143,46 @@ void AlgoWorker::execCommand(BotCommand com)
     case BOT_BACKWARD:
         c = 'S';
         break;
-    case BOT_UP:
-        liftTrap();
-        break;
-    case BOT_DOWN:
-        lowerTrap();
-        break;
     case BOT_STOP:
-        c = 'P';
+        c = 'O';
+        break;
+    case BOT_LED_ON:
+        c = 'L';
+        break;
+    case BOT_LED_OFF:
+        c = 'l';
         break;
     case BOT_F_PULSE:
         c = 'W';
         toSleep = true;
         pulseMs = 100;
-        sleepMs = 400;
+        sleepMs = 200;
         break;
     case BOT_B_PULSE:
-        c = 'S';
+        c = 's';
         toSleep = true;
-        pulseMs = 100;
+        pulseMs = 200;
         sleepMs = 400;
         break;
     case BOT_R_PULSE:
-        c = 'D';
+        c = 'd';
         toSleep = true;
-        pulseMs = 100;
-        sleepMs = 1000;
+        pulseMs = 80;
+        sleepMs = 400;
         break;
     case BOT_L_PULSE:
-        c = 'A';
+        c = 'a';
         toSleep = true;
-        pulseMs = 100;
-        sleepMs = 1000;
+        pulseMs = 80;
+        sleepMs = 400;
         break;
     }
-    qDebug() << "Executing " << c << ", toSleep = " << toSleep;
+     // << "Executing " << c << ", toSleep = " << toSleep;
     s.WriteByte(c);
     if(toSleep)
     {
         usleep(1000*pulseMs);
-        s.WriteByte('P');
+        s.WriteByte('O');
         usleep(1000*sleepMs);
     }
 }
@@ -268,40 +197,46 @@ bool AlgoWorker::moveToPoint(CvPoint botPos, double botAngle, CvPoint dest)
         angleTowardPoint -= 2*CV_PI;
     while(angleTowardPoint < -CV_PI)
         angleTowardPoint += 2*CV_PI;
-    if(angleTowardPoint > ANGLE_TOLERANCE_COARSE)
+    if(dSq > MIN_BOT_CUBE_DIST_COARSE_SQR)
     {
-        execCommand(BOT_RIGHT);
-    }
-    else if(angleTowardPoint < -ANGLE_TOLERANCE_COARSE)
-    {
-        execCommand(BOT_LEFT);
-    }
-    else if(dSq > MIN_BOT_CUBE_DIST_COARSE_SQR)
-    {
-        execCommand(BOT_FORWARD);
+        if(angleTowardPoint > ANGLE_TOLERANCE_COARSE)
+        {
+            execCommand(BOT_RIGHT);
+        }
+        else if(angleTowardPoint < -ANGLE_TOLERANCE_COARSE)
+        {
+            execCommand(BOT_LEFT);
+        } else
+         execCommand(BOT_FORWARD);
     }
     else
     {
-        if(angleTowardPoint > ANGLE_TOLERANCE_FINE)
+        if(dSq > MIN_BOT_CUBE_DIST_FINE_SQR)
         {
-            execCommand(BOT_R_PULSE);
-        }
-        else if(angleTowardPoint < -ANGLE_TOLERANCE_FINE)
-        {
-            execCommand(BOT_L_PULSE);
+
+            if(angleTowardPoint > ANGLE_TOLERANCE_FINE)
+            {
+                execCommand(BOT_R_PULSE);
+            }
+            else if(angleTowardPoint < -ANGLE_TOLERANCE_FINE)
+            {
+                execCommand(BOT_L_PULSE);
+            } else
+                execCommand(BOT_F_PULSE);
         }
         else
         {
-            if(dSq > MIN_BOT_CUBE_DIST_FINE_SQR)
+            execCommand(BOT_STOP);
+            for (int i = 0; i < 5; ++i)
             {
-                execCommand(BOT_F_PULSE);
+              execCommand(BOT_LED_ON);
+              usleep(100*1000);
+              execCommand(BOT_LED_OFF);
+              usleep(100*1000);
             }
-            else
-            {
-                execCommand(BOT_STOP);
-                return false;
-            }
+            return false;
         }
+
 //        qDebug() << distSq(bs.botPos, curDest) << " "<< MIN_BOT_CUBE_DIST*MIN_BOT_CUBE_DIST<<" "<< dirAngle << " " << bs.botAngle <<"l";
 //        s.WriteByte('P');
 //        for(int i=0; i<5; i++)

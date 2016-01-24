@@ -4,7 +4,7 @@
 #include <imgproc/imgproc.hpp>
 #include <opencv.hpp>
 #include <QtCore>
-#define CAMNUM 0
+#define CAMNUM 1
 CameraWorker::CameraWorker(QObject *parent) :
     QObject(parent)
 {
@@ -25,9 +25,9 @@ CameraWorker::CameraWorker(QObject *parent) :
         return;
     }
 //    cvSetCaptureProperty(capture, CV_CAP_PROP_FPS, 30);
-    IplImage *temp = cvLoadImage("pics/Picture 25.jpg");
+//    IplImage *temp = cvLoadImage("pics/Picture 25.jpg");
     arenaFrame = cvCreateImage(cvSize(640,480), 8, 3);
-    cvResize(temp, arenaFrame);
+//    cvResize(temp, arenaFrame);
     if(!arenaFrame)
     {
         qDebug() << "Arena couln't be loaded.";

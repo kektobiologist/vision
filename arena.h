@@ -1,8 +1,8 @@
 #ifndef ARENA_H
 #define ARENA_H
-#include <highgui/highgui.hpp>
-#include <core/core.hpp>
-#include <opencv.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/opencv.hpp>
 #include <QtCore>
 #define ARENA_CONFIG "arena-config"
 static const int MAX_MOUSE_POINT_DIST_SQR = 20*20;

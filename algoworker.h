@@ -24,8 +24,8 @@ enum BotCommand{
     BOT_LEFT,
     BOT_RIGHT,
     BOT_STOP,
-    BOT_UP,
-    BOT_DOWN,
+    BOT_LED_ON,
+    BOT_LED_OFF,
     BOT_F_PULSE,
     BOT_B_PULSE,
     BOT_L_PULSE,
@@ -75,6 +75,10 @@ private:
     void lowerTrap();
     CubeData chooseBestResourceCube();// returns cvPoint(-1,-1) if no cube.
     bool calcCubeInter(CubeData cube);
+
+
+    vector<int> x, y;
+    int idx; // idx in x, y
 };
 
 #endif // ALGOWORKER_H

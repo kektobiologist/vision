@@ -2,7 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <highgui/highgui.hpp>
+#include <opencv2/highgui/highgui.hpp>
 #include <core/core.hpp>
 #include <imgproc/imgproc.hpp>
 #include <QList>
